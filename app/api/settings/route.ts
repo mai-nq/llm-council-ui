@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { loadSettings, saveSettings } from "@/lib/storage";
-import { COUNCIL_MODELS } from "@/lib/types";
 import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
+
+// Model ID format: "provider/model-name" (e.g., "openai/gpt-4", "anthropic/claude-3")
+const ModelIdSchema = z
+  .string()
+  .min(1)
+  .max(100)
+  .regex(
+    /^[a-z0-9_-]+\/[a-z0-9_.-]+$/i,
+    "Model ID must be in format: provider/model-name"
+  );
 
 // Security: Zod schema for input validation
 const ModelConfigSchema = z.object({
-  modelId: z.string().min(1).max(100),
+  modelId: ModelIdSchema,
   active: z.boolean(),
   temperature: z.number().min(0).max(2),
   maxTokens: z.number().int().min(1).max(8192),
@@ -15,11 +24,8 @@ const ModelConfigSchema = z.object({
 
 const SettingsSchema = z.object({
   models: z.array(ModelConfigSchema).min(1).max(10),
-  chairmanModel: z.string().min(1).max(100),
+  chairmanModel: ModelIdSchema,
 });
-
-// Whitelist of valid model IDs
-const VALID_MODEL_IDS = new Set(COUNCIL_MODELS.map((m) => m.id));
 
 export async function GET(request: Request) {
   // Security: Rate limiting
@@ -76,19 +82,11 @@ export async function POST(request: Request) {
 
     const settings = parseResult.data;
 
-    // Security: Validate model IDs against whitelist
-    for (const model of settings.models) {
-      if (!VALID_MODEL_IDS.has(model.modelId)) {
-        return NextResponse.json(
-          { error: `Invalid model ID: ${model.modelId}` },
-          { status: 400 }
-        );
-      }
-    }
-
-    if (!VALID_MODEL_IDS.has(settings.chairmanModel)) {
+    // Validate chairman is one of the configured models
+    const modelIds = settings.models.map((m) => m.modelId);
+    if (!modelIds.includes(settings.chairmanModel)) {
       return NextResponse.json(
-        { error: `Invalid chairman model: ${settings.chairmanModel}` },
+        { error: "Chairman must be one of the configured models" },
         { status: 400 }
       );
     }

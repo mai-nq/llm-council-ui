@@ -17,7 +17,16 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
+import {
   DEFAULT_SETTINGS,
+  getModelDisplayInfo,
   type Settings,
   type ModelConfig,
 } from '@/lib/types'
@@ -73,15 +82,34 @@ export default function SettingsPage() {
     setSettings(DEFAULT_SETTINGS)
   }
 
-  const updateConfig = (modelId: string, updates: Partial<ModelConfig>) => {
+  const updateConfig = (index: number, updates: Partial<ModelConfig>) => {
     if (!settings) return
+
+    const newModels = [...settings.models]
+    newModels[index] = { ...newModels[index], ...updates }
+
+    // If chairman model was changed, update chairmanModel reference
+    let newChairmanModel = settings.chairmanModel
+    if (updates.modelId && settings.models[index].modelId === settings.chairmanModel) {
+      newChairmanModel = updates.modelId
+    }
+
+    // If the current chairman is deactivated, switch to first active model
+    const activeModels = newModels.filter((m) => m.active)
+    if (activeModels.length > 0 && !activeModels.find((m) => m.modelId === newChairmanModel)) {
+      newChairmanModel = activeModels[0].modelId
+    }
 
     setSettings({
       ...settings,
-      models: settings.models.map((m) =>
-        m.modelId === modelId ? { ...m, ...updates } : m
-      ),
+      models: newModels,
+      chairmanModel: newChairmanModel,
     })
+  }
+
+  const setChairmanModel = (modelId: string) => {
+    if (!settings) return
+    setSettings({ ...settings, chairmanModel: modelId })
   }
 
   const enabledCount = settings?.models.filter((c) => c.active).length ?? 0
@@ -150,6 +178,41 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          {/* Chairman Selection */}
+          <div className="mb-6 rounded-lg border border-border bg-card/50 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex-1">
+                <Label className="text-sm font-semibold">Chairman Model</Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  The chairman synthesizes all responses into the final answer
+                </p>
+              </div>
+              <Select value={settings.chairmanModel} onValueChange={setChairmanModel}>
+                <SelectTrigger className="w-full sm:w-[280px]">
+                  <SelectValue placeholder="Select chairman model" />
+                </SelectTrigger>
+                <SelectContent>
+                  {settings.models.filter((m) => m.active).map((model) => {
+                    const info = getModelDisplayInfo(model.modelId)
+                    return (
+                      <SelectItem key={model.modelId} value={model.modelId}>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="h-4 w-4 rounded text-[10px] flex items-center justify-center text-white font-semibold"
+                            style={{ backgroundColor: info.color }}
+                          >
+                            {info.icon}
+                          </div>
+                          <span className="truncate">{model.modelId}</span>
+                        </div>
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           {/* Active Council Info */}
           <div className="mb-6 rounded-lg border border-border bg-card/50 p-4">
             <p className="text-sm">
@@ -162,11 +225,11 @@ export default function SettingsPage() {
 
           {/* Model Configuration Cards */}
           <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
-            {settings.models.map((config) => (
+            {settings.models.map((config, index) => (
               <ModelConfigCard
-                key={config.modelId}
+                key={index}
                 config={config}
-                onUpdate={(updates) => updateConfig(config.modelId, updates)}
+                onUpdate={(updates) => updateConfig(index, updates)}
               />
             ))}
           </div>
