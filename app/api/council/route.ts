@@ -2,12 +2,30 @@ import { NextResponse } from "next/server";
 import { loadSettings } from "@/lib/storage";
 import { runFullCouncil } from "@/lib/council";
 import { getActiveModels, type Stage1Response, type Stage2Result } from "@/lib/types";
+import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 
 // Increase timeout for long-running council deliberations
 export const maxDuration = 300; // 5 minutes
 
 // Standalone council endpoint (without conversation persistence)
 export async function POST(request: Request) {
+  // Security: Rate limiting for expensive LLM endpoint
+  const clientIP = getClientIP(request);
+  const rateLimitResult = checkRateLimit(`council:${clientIP}`, RATE_LIMITS.llm);
+
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000)),
+          "X-RateLimit-Remaining": "0",
+        },
+      }
+    );
+  }
+
   try {
     const body = await request.json();
     const { query } = body;

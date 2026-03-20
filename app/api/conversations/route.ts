@@ -4,8 +4,20 @@ import {
   createNewConversation,
   saveConversation,
 } from "@/lib/storage";
+import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Security: Rate limiting
+  const clientIP = getClientIP(request);
+  const rateLimitResult = checkRateLimit(`conversations:get:${clientIP}`, RATE_LIMITS.standard);
+
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429 }
+    );
+  }
+
   try {
     const conversations = await listConversations();
     return NextResponse.json(conversations);
@@ -18,7 +30,18 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  // Security: Rate limiting
+  const clientIP = getClientIP(request);
+  const rateLimitResult = checkRateLimit(`conversations:post:${clientIP}`, RATE_LIMITS.standard);
+
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429 }
+    );
+  }
+
   try {
     const conversation = createNewConversation();
     await saveConversation(conversation);

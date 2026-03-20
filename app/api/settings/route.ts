@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { loadSettings, saveSettings } from "@/lib/storage";
 import { COUNCIL_MODELS } from "@/lib/types";
+import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 
 // Security: Zod schema for input validation
 const ModelConfigSchema = z.object({
@@ -20,7 +21,18 @@ const SettingsSchema = z.object({
 // Whitelist of valid model IDs
 const VALID_MODEL_IDS = new Set(COUNCIL_MODELS.map((m) => m.id));
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Security: Rate limiting
+  const clientIP = getClientIP(request);
+  const rateLimitResult = checkRateLimit(`settings:get:${clientIP}`, RATE_LIMITS.settings);
+
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429 }
+    );
+  }
+
   try {
     const settings = await loadSettings();
     const hasApiKey = !!process.env.OPENROUTER_API_KEY;
@@ -39,6 +51,17 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  // Security: Rate limiting
+  const clientIP = getClientIP(request);
+  const rateLimitResult = checkRateLimit(`settings:post:${clientIP}`, RATE_LIMITS.settings);
+
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await request.json();
 
