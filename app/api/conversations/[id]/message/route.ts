@@ -7,6 +7,7 @@ import {
 } from "@/lib/storage";
 import { runFullCouncil, generateConversationTitle } from "@/lib/council";
 import { getActiveModels, type Message, type Stage1Response, type Stage2Result } from "@/lib/types";
+import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 
 // Increase timeout for long-running council deliberations
 export const maxDuration = 300; // 5 minutes
@@ -16,6 +17,22 @@ interface RouteParams {
 }
 
 export async function POST(request: Request, { params }: RouteParams) {
+  // Security: Rate limiting for expensive LLM endpoint
+  const clientIP = getClientIP(request);
+  const rateLimitResult = checkRateLimit(`message:${clientIP}`, RATE_LIMITS.llm);
+
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000)),
+        },
+      }
+    );
+  }
+
   const { id } = await params;
 
   try {

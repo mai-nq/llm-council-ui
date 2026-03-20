@@ -1,11 +1,23 @@
 import { NextResponse } from "next/server";
 import { loadConversation, deleteConversation } from "@/lib/storage";
+import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
 export async function GET(request: Request, { params }: RouteParams) {
+  // Security: Rate limiting
+  const clientIP = getClientIP(request);
+  const rateLimitResult = checkRateLimit(`conversation:get:${clientIP}`, RATE_LIMITS.standard);
+
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429 }
+    );
+  }
+
   try {
     const { id } = await params;
     const conversation = await loadConversation(id);
@@ -28,6 +40,17 @@ export async function GET(request: Request, { params }: RouteParams) {
 }
 
 export async function DELETE(request: Request, { params }: RouteParams) {
+  // Security: Rate limiting
+  const clientIP = getClientIP(request);
+  const rateLimitResult = checkRateLimit(`conversation:delete:${clientIP}`, RATE_LIMITS.standard);
+
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429 }
+    );
+  }
+
   try {
     const { id } = await params;
     const deleted = await deleteConversation(id);

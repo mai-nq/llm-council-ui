@@ -13,6 +13,13 @@ const DATA_DIR = path.join(process.cwd(), "data");
 const CONVERSATIONS_DIR = path.join(DATA_DIR, "conversations");
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 
+// Security: UUID validation to prevent path traversal attacks
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidUUID(id: string): boolean {
+  return UUID_REGEX.test(id);
+}
+
 // Ensure directories exist
 async function ensureDirectories(): Promise<void> {
   await fs.mkdir(CONVERSATIONS_DIR, { recursive: true });
@@ -79,6 +86,11 @@ export async function listConversations(): Promise<ConversationMetadata[]> {
 }
 
 export async function loadConversation(id: string): Promise<Conversation | null> {
+  // Security: Validate UUID to prevent path traversal
+  if (!isValidUUID(id)) {
+    return null;
+  }
+
   await ensureDirectories();
 
   try {
@@ -91,6 +103,11 @@ export async function loadConversation(id: string): Promise<Conversation | null>
 }
 
 export async function saveConversation(conversation: Conversation): Promise<void> {
+  // Security: Validate UUID to prevent path traversal
+  if (!isValidUUID(conversation.id)) {
+    throw new Error("Invalid conversation ID");
+  }
+
   await ensureDirectories();
 
   const filePath = path.join(CONVERSATIONS_DIR, `${conversation.id}.json`);
@@ -98,6 +115,11 @@ export async function saveConversation(conversation: Conversation): Promise<void
 }
 
 export async function deleteConversation(id: string): Promise<boolean> {
+  // Security: Validate UUID to prevent path traversal
+  if (!isValidUUID(id)) {
+    return false;
+  }
+
   await ensureDirectories();
 
   try {

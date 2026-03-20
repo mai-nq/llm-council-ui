@@ -119,8 +119,8 @@ describe('generateConversationTitle', () => {
     const callArgs = mockCallModel.mock.calls[0]
     const content = callArgs[1][0].content as string
 
-    // Should contain Summary: followed by exactly 200 A's
-    expect(content).toContain('Summary: ' + 'A'.repeat(200))
+    // Should contain SUMMARY tag with exactly 200 A's (security: XML-escaped format)
+    expect(content).toContain('<SUMMARY>' + 'A'.repeat(200) + '</SUMMARY>')
     // Should NOT contain 201 or more A's in a row
     expect(content).not.toContain('A'.repeat(201))
   })

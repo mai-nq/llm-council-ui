@@ -54,9 +54,11 @@ export async function callModel(
   });
 
   if (!response.ok) {
+    // Security: Log detailed error server-side only, return generic error to client
     const errorText = await response.text();
     console.error(`[OpenRouter] Error for ${model}: ${response.status} - ${errorText}`);
-    throw new Error(`OpenRouter API error (${response.status}): ${errorText}`);
+    // Don't expose internal API details to clients
+    throw new Error(`Model request failed (${response.status}). Please try again.`);
   }
 
   const data: OpenRouterResponse = await response.json();
