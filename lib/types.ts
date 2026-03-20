@@ -58,6 +58,22 @@ export const MODEL_COLORS: Record<string, string> = {
   "x-ai": "bg-red-500",
   "meta-llama": "bg-purple-500",
   mistralai: "bg-cyan-500",
+  deepseek: "bg-indigo-500",
+  cohere: "bg-pink-500",
+  perplexity: "bg-teal-500",
+};
+
+// Provider hex colors for inline styles
+export const PROVIDER_HEX_COLORS: Record<string, string> = {
+  openai: "#10b981",
+  anthropic: "#f97316",
+  google: "#3b82f6",
+  "x-ai": "#ef4444",
+  "meta-llama": "#8b5cf6",
+  mistralai: "#06b6d4",
+  deepseek: "#6366f1",
+  cohere: "#ec4899",
+  perplexity: "#14b8a6",
 };
 
 export function getModelColor(modelId: string): string {
@@ -68,6 +84,26 @@ export function getModelColor(modelId: string): string {
 export function getModelDisplayName(modelId: string): string {
   const model = COUNCIL_MODELS.find((m) => m.id === modelId);
   return model?.name || modelId.split("/").pop() || modelId;
+}
+
+// Display info for any model_id (not just hardcoded ones)
+export interface ModelDisplayInfo {
+  name: string;
+  provider: string;
+  color: string;
+  icon: string;
+}
+
+export function getModelDisplayInfo(modelId: string): ModelDisplayInfo {
+  const provider = modelId.split("/")[0] || "unknown";
+  const modelName = modelId.split("/")[1] || modelId;
+
+  return {
+    name: modelName,
+    provider: provider,
+    color: PROVIDER_HEX_COLORS[provider] || "#6b7280",
+    icon: provider[0]?.toUpperCase() || "?",
+  };
 }
 
 export interface ChatMessage {

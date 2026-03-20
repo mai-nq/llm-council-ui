@@ -1,12 +1,12 @@
 'use client'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Slider } from '@/components/ui/slider'
-import { COUNCIL_MODELS, type ModelConfig } from '@/lib/types'
+import { getModelDisplayInfo, type ModelConfig } from '@/lib/types'
 
 interface ModelConfigCardProps {
   config: ModelConfig
@@ -14,26 +14,32 @@ interface ModelConfigCardProps {
 }
 
 export function ModelConfigCard({ config, onUpdate }: ModelConfigCardProps) {
-  const model = COUNCIL_MODELS.find((m) => m.id === config.modelId)
-  if (!model) return null
+  const displayInfo = getModelDisplayInfo(config.modelId)
 
   return (
     <Card className="overflow-hidden">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
             <div
-              className="flex h-10 w-10 items-center justify-center rounded-lg font-semibold text-sm text-white"
-              style={{ backgroundColor: model.color }}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-semibold text-sm text-white"
+              style={{ backgroundColor: displayInfo.color }}
             >
-              {model.icon}
+              {displayInfo.icon}
             </div>
-            <div>
-              <CardTitle className="text-base">{model.name}</CardTitle>
-              <CardDescription className="text-xs">{model.provider}</CardDescription>
+            <div className="flex-1 min-w-0">
+              <Input
+                value={config.modelId}
+                onChange={(e) => onUpdate({ modelId: e.target.value })}
+                placeholder="provider/model-name"
+                className="h-8 text-sm font-medium"
+              />
+              <p className="text-xs text-muted-foreground mt-1 truncate">
+                {displayInfo.provider}
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <Label htmlFor={`toggle-${config.modelId}`} className="text-sm">
               Active
             </Label>
