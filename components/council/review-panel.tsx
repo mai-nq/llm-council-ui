@@ -47,7 +47,7 @@ export function ReviewPanel({ stage2, isLoading }: ReviewPanelProps) {
     )
   }
 
-  if (!stage2 || stage2.aggregateRankings.length === 0) {
+  if (!stage2 || !stage2.aggregateRankings || stage2.aggregateRankings.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border bg-card/50 p-6 text-center">
         <p className="text-sm text-muted-foreground">
@@ -57,7 +57,7 @@ export function ReviewPanel({ stage2, isLoading }: ReviewPanelProps) {
     )
   }
 
-  const reviewCount = stage2.modelRankings.length
+  const reviewCount = stage2.modelRankings?.length ?? 0
 
   return (
     <div className="rounded-lg border border-border bg-card p-4">

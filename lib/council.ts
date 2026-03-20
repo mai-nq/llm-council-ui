@@ -8,6 +8,7 @@ import type {
   Stage2Result,
   AggregateRanking,
   CouncilResponse,
+  Settings,
 } from "./types";
 
 const LABELS = ["A", "B", "C", "D", "E", "F", "G", "H"];
@@ -224,6 +225,53 @@ export async function stage3Synthesize(
   ];
 
   return callModel(chairmanModel, messages);
+}
+
+// Generate a concise conversation title using the chairman model
+export async function generateConversationTitle(
+  userQuestion: string,
+  synthesisResponse: string,
+  settings: Settings
+): Promise<string> {
+  const summarySnippet = synthesisResponse.slice(0, 200);
+
+  const prompt = `Generate a concise title (5-10 words) for this conversation.
+Do not use quotes. Just return the title text.
+
+Question: ${userQuestion}
+Summary: ${summarySnippet}`;
+
+  const messages: ChatMessage[] = [
+    {
+      role: "user",
+      content: prompt,
+    },
+  ];
+
+  try {
+    const title = await callModel(settings.chairmanModel, messages);
+    // Clean up the title: remove quotes, trim, and ensure reasonable length
+    const cleanTitle = title
+      .replace(/^["']|["']$/g, "")
+      .replace(/^Title:\s*/i, "")
+      .trim();
+
+    // Ensure title is reasonable length (5-50 chars)
+    if (cleanTitle.length >= 5 && cleanTitle.length <= 100) {
+      return cleanTitle;
+    }
+    // If too short or too long, truncate or return fallback
+    if (cleanTitle.length > 100) {
+      return cleanTitle.slice(0, 97) + "...";
+    }
+    // Fallback: use truncated user question
+    return userQuestion.slice(0, 47) + "...";
+  } catch (error) {
+    console.error("Failed to generate conversation title:", error);
+    // Fallback: use truncated user question
+    const fallback = userQuestion.slice(0, 50);
+    return fallback.length < userQuestion.length ? fallback.slice(0, 47) + "..." : fallback;
+  }
 }
 
 // Run full council deliberation

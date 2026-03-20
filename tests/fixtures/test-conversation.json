@@ -1,0 +1,40 @@
+{
+  "id": "test-conversation-001",
+  "title": "Understanding AI Consciousness",
+  "createdAt": "2026-03-19T10:00:00.000Z",
+  "updatedAt": "2026-03-19T10:05:00.000Z",
+  "messages": [
+    {
+      "id": "msg-001",
+      "role": "user",
+      "content": "What is consciousness and can AI have it?",
+      "timestamp": "2026-03-19T10:00:00.000Z"
+    },
+    {
+      "id": "msg-002",
+      "role": "assistant",
+      "content": "Consciousness is a complex phenomenon that involves subjective experience and awareness...",
+      "timestamp": "2026-03-19T10:05:00.000Z",
+      "councilResponse": {
+        "stage1": [
+          {
+            "model": "openai/gpt-5.4-pro",
+            "content": "Response from GPT...",
+            "label": "A"
+          },
+          {
+            "model": "anthropic/claude-sonnet-4.6",
+            "content": "Response from Claude...",
+            "label": "B"
+          }
+        ],
+        "stage2": {
+          "modelRankings": [],
+          "aggregateRankings": [],
+          "labelToModel": {}
+        },
+        "stage3": "Consciousness is a complex phenomenon..."
+      }
+    }
+  ]
+}

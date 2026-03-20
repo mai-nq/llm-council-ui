@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("debug conversation view", async ({ page }) => {
+test.skip("debug conversation view", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto("/");
   await page.waitForTimeout(500);

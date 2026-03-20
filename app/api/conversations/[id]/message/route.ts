@@ -5,7 +5,7 @@ import {
   loadSettings,
   generateTitle,
 } from "@/lib/storage";
-import { runFullCouncil } from "@/lib/council";
+import { runFullCouncil, generateConversationTitle } from "@/lib/council";
 import { getActiveModels, type Message, type Stage1Response, type Stage2Result } from "@/lib/types";
 
 // Increase timeout for long-running council deliberations
@@ -91,6 +91,22 @@ export async function POST(request: Request, { params }: RouteParams) {
 
           // Send stage 3
           sendEvent("stage3_complete", councilResponse.stage3);
+
+          // Generate AI title for first message only
+          const isFirstMessage = conversation.messages.length === 1; // Only user message so far
+          if (isFirstMessage) {
+            try {
+              const aiTitle = await generateConversationTitle(
+                content,
+                councilResponse.stage3,
+                settings
+              );
+              conversation.title = aiTitle;
+            } catch (titleError) {
+              console.error("Failed to generate AI title, keeping fallback:", titleError);
+              // Keep the existing title from generateTitle()
+            }
+          }
 
           // Create assistant message
           const assistantMessage: Message = {
