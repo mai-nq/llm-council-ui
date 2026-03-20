@@ -27,9 +27,12 @@ function escapeForPrompt(text: string): string {
 // Stage 1: Collect responses from all models in parallel
 export async function stage1CollectResponses(
   query: string,
-  models: string[]
+  models: string[],
+  conversationHistory?: ChatMessage[]
 ): Promise<Stage1Response[]> {
+  // Build messages: history (user + chairman responses only) + current query
   const messages: ChatMessage[] = [
+    ...(conversationHistory || []),
     {
       role: "user",
       content: query,
@@ -296,18 +299,20 @@ Do not use quotes. Just return the title text.
 }
 
 // Run full council deliberation
+// conversationHistory: previous turns as user/assistant pairs (chairman responses only, no intermediate steps)
 export async function runFullCouncil(
   query: string,
   models: string[],
   chairmanModel: string,
   onStage1Complete?: (responses: Stage1Response[]) => void,
-  onStage2Complete?: (result: Stage2Result) => void
+  onStage2Complete?: (result: Stage2Result) => void,
+  conversationHistory?: ChatMessage[]
 ): Promise<CouncilResponse> {
-  // Stage 1: Collect responses
-  const stage1Responses = await stage1CollectResponses(query, models);
+  // Stage 1: Collect responses (with conversation history for context)
+  const stage1Responses = await stage1CollectResponses(query, models, conversationHistory);
   onStage1Complete?.(stage1Responses);
 
-  // Stage 2: Peer ranking
+  // Stage 2: Peer ranking (no history needed - evaluates current responses only)
   const stage2Result = await stage2CollectRankings(stage1Responses, models, query);
   onStage2Complete?.(stage2Result);
 

@@ -6,8 +6,26 @@ import {
   generateTitle,
 } from "@/lib/storage";
 import { runFullCouncil, generateConversationTitle } from "@/lib/council";
-import { getActiveModels, type Message, type Stage1Response, type Stage2Result } from "@/lib/types";
+import { getActiveModels, type Message, type ChatMessage, type Stage1Response, type Stage2Result } from "@/lib/types";
 import { checkRateLimit, getClientIP, RATE_LIMITS } from "@/lib/rate-limit";
+
+// Build conversation history from previous messages
+// Only includes user inputs and chairman's final responses (stage3)
+// Does NOT include intermediate steps (stage1, stage2) to save tokens
+function buildConversationHistory(messages: Message[]): ChatMessage[] {
+  const history: ChatMessage[] = [];
+
+  for (const msg of messages) {
+    if (msg.role === "user") {
+      history.push({ role: "user", content: msg.content });
+    } else if (msg.role === "assistant") {
+      // Only use the final synthesized response (stage3), not intermediate steps
+      history.push({ role: "assistant", content: msg.content });
+    }
+  }
+
+  return history;
+}
 
 // Increase timeout for long-running council deliberations
 export const maxDuration = 300; // 5 minutes
@@ -93,7 +111,12 @@ export async function POST(request: Request, { params }: RouteParams) {
           // Get active models from settings
           const activeModels = getActiveModels(settings);
 
-          // Run council deliberation
+          // Build conversation history (user + chairman responses only, no intermediate steps)
+          // This is passed to models so they have context from previous turns
+          const previousMessages = conversation.messages.slice(0, -1); // Exclude the just-added user message
+          const conversationHistory = buildConversationHistory(previousMessages);
+
+          // Run council deliberation with history
           const councilResponse = await runFullCouncil(
             content,
             activeModels,
@@ -103,7 +126,8 @@ export async function POST(request: Request, { params }: RouteParams) {
             },
             (stage2: Stage2Result) => {
               sendEvent("stage2_complete", stage2);
-            }
+            },
+            conversationHistory
           );
 
           // Send stage 3

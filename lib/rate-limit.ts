@@ -6,18 +6,28 @@ interface RateLimitEntry {
   resetTime: number;
 }
 
-const rateLimitStore = new Map<string, RateLimitEntry>();
+// Use global to persist across hot reloads in dev mode
+const globalForRateLimit = globalThis as unknown as {
+  rateLimitStore: Map<string, RateLimitEntry> | undefined;
+  rateLimitCleanupStarted: boolean | undefined;
+};
 
-// Clean up expired entries periodically
+const rateLimitStore = globalForRateLimit.rateLimitStore ?? new Map<string, RateLimitEntry>();
+globalForRateLimit.rateLimitStore = rateLimitStore;
+
+// Clean up expired entries periodically (only start once)
 const CLEANUP_INTERVAL = 60 * 1000; // 1 minute
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitStore.entries()) {
-    if (entry.resetTime < now) {
-      rateLimitStore.delete(key);
+if (!globalForRateLimit.rateLimitCleanupStarted) {
+  globalForRateLimit.rateLimitCleanupStarted = true;
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of rateLimitStore.entries()) {
+      if (entry.resetTime < now) {
+        rateLimitStore.delete(key);
+      }
     }
-  }
-}, CLEANUP_INTERVAL);
+  }, CLEANUP_INTERVAL);
+}
 
 export interface RateLimitConfig {
   maxRequests: number;
