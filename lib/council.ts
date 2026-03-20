@@ -13,6 +13,17 @@ import type {
 
 const LABELS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
+// Security: Escape user input to prevent prompt injection
+// Uses XML-style delimiters that are harder to break out of
+function escapeForPrompt(text: string): string {
+  // Replace characters that could be used for prompt injection
+  return text
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\[/g, "&#91;")
+    .replace(/\]/g, "&#93;");
+}
+
 // Stage 1: Collect responses from all models in parallel
 export async function stage1CollectResponses(
   query: string,
@@ -36,17 +47,20 @@ export async function stage1CollectResponses(
 
 // Create anonymized prompt for peer ranking
 function createRankingPrompt(responses: Stage1Response[], query: string): string {
+  // Security: Escape user input to prevent prompt injection
+  const escapedQuery = escapeForPrompt(query);
+
   let prompt = `You are evaluating multiple AI responses to the following question:
 
-"${query}"
+<USER_QUESTION>${escapedQuery}</USER_QUESTION>
 
 Here are the responses to evaluate:
 
 `;
 
   for (const response of responses) {
-    prompt += `--- Response ${response.label} ---
-${response.content}
+    const escapedContent = escapeForPrompt(response.content);
+    prompt += `<RESPONSE label="${response.label}">${escapedContent}</RESPONSE>
 
 `;
   }
@@ -174,9 +188,12 @@ function createSynthesisPrompt(
   stage2Result: Stage2Result,
   originalQuery: string
 ): string {
+  // Security: Escape user input to prevent prompt injection
+  const escapedQuery = escapeForPrompt(originalQuery);
+
   let prompt = `You are the Chairman of an LLM Council, tasked with synthesizing the best possible answer.
 
-Original Question: "${originalQuery}"
+<ORIGINAL_QUESTION>${escapedQuery}</ORIGINAL_QUESTION>
 
 The council has provided the following responses and rankings:
 
@@ -185,8 +202,8 @@ The council has provided the following responses and rankings:
 
   for (const response of responses) {
     const modelName = response.model.split("/").pop() || response.model;
-    prompt += `### ${modelName} (Response ${response.label})
-${response.content}
+    const escapedContent = escapeForPrompt(response.content);
+    prompt += `<RESPONSE model="${modelName}" label="${response.label}">${escapedContent}</RESPONSE>
 
 `;
   }
@@ -235,11 +252,15 @@ export async function generateConversationTitle(
 ): Promise<string> {
   const summarySnippet = synthesisResponse.slice(0, 200);
 
+  // Security: Escape user input to prevent prompt injection
+  const escapedQuestion = escapeForPrompt(userQuestion);
+  const escapedSnippet = escapeForPrompt(summarySnippet);
+
   const prompt = `Generate a concise title (5-10 words) for this conversation.
 Do not use quotes. Just return the title text.
 
-Question: ${userQuestion}
-Summary: ${summarySnippet}`;
+<QUESTION>${escapedQuestion}</QUESTION>
+<SUMMARY>${escapedSnippet}</SUMMARY>`;
 
   const messages: ChatMessage[] = [
     {
