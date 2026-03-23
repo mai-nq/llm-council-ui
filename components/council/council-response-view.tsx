@@ -234,7 +234,7 @@ export function CouncilResponseView({
                   Peer Rankings
                 </CardTitle>
                 <span className="text-xs text-muted-foreground">
-                  {stage2.rankings.length} reviews
+                  {stage2.modelRankings.length} reviews
                 </span>
               </div>
             </CardHeader>

@@ -9,7 +9,7 @@ interface OpenRouterResponse {
   choices: {
     message: {
       role: string;
-      content: string;
+      content: string | null;
     };
     finish_reason: string;
   }[];
@@ -36,34 +36,68 @@ export async function callModel(
   const apiKey = getApiKey();
 
   console.log(`[OpenRouter] Calling model: ${model}`);
+  const startTime = Date.now();
 
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://llm-council.local",
-      "X-Title": "LLM Council",
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.7,
-      max_tokens: 4096,
-    }),
-  });
+  // Use AbortController for timeout (2 minutes per model call)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    console.error(`[OpenRouter] Timeout for ${model} after 120s`);
+    controller.abort();
+  }, 120000);
 
-  if (!response.ok) {
-    // Security: Log detailed error server-side only, return generic error to client
-    const errorText = await response.text();
-    console.error(`[OpenRouter] Error for ${model}: ${response.status} - ${errorText}`);
-    // Don't expose internal API details to clients
-    throw new Error(`Model request failed (${response.status}). Please try again.`);
+  try {
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://llm-council.local",
+        "X-Title": "LLM Council",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.7,
+        max_tokens: 8192,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[OpenRouter] Response received for ${model} in ${elapsed}ms`);
+
+    if (!response.ok) {
+      // Security: Log detailed error server-side only, return generic error to client
+      const errorText = await response.text();
+      console.error(`[OpenRouter] Error for ${model}: ${response.status} - ${errorText}`);
+      // Don't expose internal API details to clients
+      throw new Error(`Model request failed (${response.status}). Please try again.`);
+    }
+
+    const data: OpenRouterResponse = await response.json();
+    const content = data.choices[0]?.message?.content;
+    const finishReason = data.choices[0]?.finish_reason;
+
+    // Handle null content (common with reasoning models that use all tokens for thinking)
+    if (content === null || content === undefined) {
+      console.warn(`[OpenRouter] ${model} returned null content (finish_reason: ${finishReason})`);
+      // If it's a length issue, the model ran out of tokens for actual output
+      if (finishReason === "length") {
+        return "[Response truncated - model used all tokens for reasoning]";
+      }
+      return "";
+    }
+
+    console.log(`[OpenRouter] Success for ${model}, content length: ${content.length}`);
+    return content;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Model ${model} timed out after 120 seconds`);
+    }
+    throw error;
   }
-
-  const data: OpenRouterResponse = await response.json();
-  console.log(`[OpenRouter] Success for ${model}`);
-  return data.choices[0]?.message?.content || "";
 }
 
 export interface ParallelCallResult {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Header } from "@/components/council/header";
 import { CouncilChat } from "@/components/council/council-chat";
 import { HistorySidebar } from "@/components/council/history-sidebar";
@@ -11,6 +11,64 @@ import type {
   Stage2Result,
   Settings as SettingsType,
 } from "@/lib/types";
+
+// Request notification permission on mount
+function useNotificationPermission() {
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+}
+
+// Show notification and flash title when response is ready
+function useBackgroundNotification() {
+  const originalTitle = useRef<string>("LLM Council");
+  const flashInterval = useRef<NodeJS.Timeout | null>(null);
+
+  const notify = useCallback((message: string) => {
+    // Only notify if tab is not visible
+    if (document.visibilityState !== "visible") {
+      // Browser notification
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification("LLM Council", {
+          body: message,
+          icon: "/favicon.ico",
+        });
+      }
+
+      // Flash title
+      let isOriginal = true;
+      flashInterval.current = setInterval(() => {
+        document.title = isOriginal ? "✨ Response Ready!" : originalTitle.current;
+        isOriginal = !isOriginal;
+      }, 1000);
+    }
+  }, []);
+
+  // Stop flashing when tab becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        if (flashInterval.current) {
+          clearInterval(flashInterval.current);
+          flashInterval.current = null;
+        }
+        document.title = originalTitle.current;
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (flashInterval.current) {
+        clearInterval(flashInterval.current);
+      }
+    };
+  }, []);
+
+  return notify;
+}
 
 export default function Home() {
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -23,6 +81,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  useNotificationPermission();
+  const notifyBackground = useBackgroundNotification();
 
   useEffect(() => {
     loadSettings();
@@ -143,18 +204,25 @@ export default function Home() {
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             try {
-              const event = JSON.parse(line.slice(6));
+              const eventData = line.slice(6);
+              console.log("[SSE] Received event data:", eventData.slice(0, 100));
+              const event = JSON.parse(eventData);
+              console.log("[SSE] Parsed event type:", event.type);
 
               if (event.type === "stage1_complete") {
+                console.log("[SSE] Stage 1 complete, responses:", event.data?.length);
                 setPendingStage1(event.data);
                 setCurrentStage(2);
               } else if (event.type === "stage2_complete") {
+                console.log("[SSE] Stage 2 complete, rankings:", event.data?.modelRankings?.length);
                 setPendingStage2(event.data);
                 setCurrentStage(3);
               } else if (event.type === "stage3_complete") {
+                console.log("[SSE] Stage 3 complete, synthesis length:", event.data?.length);
                 setPendingStage3(event.data);
                 setCurrentStage(0);
               } else if (event.type === "complete") {
+                console.log("[SSE] Complete event received");
                 // Reload conversation
                 const convRes = await fetch(`/api/conversations/${conversationId}`);
                 if (convRes.ok) {
@@ -162,12 +230,14 @@ export default function Home() {
                   setConversation(conv);
                 }
                 setRefreshTrigger((prev) => prev + 1);
+                // Notify user if tab is in background
+                notifyBackground("Council response is ready!");
               } else if (event.type === "error") {
                 console.error("Council error:", event.data.message);
                 setError(event.data.message || "An error occurred");
               }
-            } catch {
-              // Skip invalid JSON
+            } catch (parseError) {
+              console.warn("[SSE] Failed to parse:", line.slice(0, 100), parseError);
             }
           }
         }

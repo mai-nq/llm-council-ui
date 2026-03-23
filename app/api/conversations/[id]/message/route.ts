@@ -106,6 +106,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     const stream = new ReadableStream({
       async start(controller) {
         const sendEvent = (type: string, data: unknown) => {
+          console.log(`[SSE] Sending event: ${type}`);
           const event = JSON.stringify({ type, data });
           controller.enqueue(encoder.encode(`data: ${event}\n\n`));
         };
@@ -134,20 +135,25 @@ export async function POST(request: Request, { params }: RouteParams) {
           const conversationHistory = buildConversationHistory(previousMessages);
 
           // Run council deliberation with history
+          console.log("[message/route] Starting council deliberation...");
           const councilResponse = await runFullCouncil(
             content,
             activeModels,
             settings.chairmanModel,
             (stage1: Stage1Response[]) => {
+              console.log("[message/route] Stage 1 callback triggered");
               sendEvent("stage1_complete", stage1);
             },
             (stage2: Stage2Result) => {
+              console.log("[message/route] Stage 2 callback triggered");
               sendEvent("stage2_complete", stage2);
             },
             conversationHistory
           );
+          console.log("[message/route] Council deliberation complete");
 
           // Send stage 3
+          console.log("[message/route] Sending stage 3...");
           sendEvent("stage3_complete", councilResponse.stage3);
 
           // Generate AI title for first message only

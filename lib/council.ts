@@ -30,6 +30,8 @@ export async function stage1CollectResponses(
   models: string[],
   conversationHistory?: ChatMessage[]
 ): Promise<Stage1Response[]> {
+  console.log("[council] Stage 1: Collecting responses from models:", models);
+
   // Build messages: history (user + chairman responses only) + current query
   const messages: ChatMessage[] = [
     ...(conversationHistory || []),
@@ -41,11 +43,21 @@ export async function stage1CollectResponses(
 
   const results = await callModelsParallel(models, messages);
 
-  return results.map((result, index) => ({
-    model: result.model,
-    content: result.error ? `Error: ${result.error}` : result.content,
-    label: LABELS[index],
-  }));
+  const responses = results.map((result, index) => {
+    if (result.error) {
+      console.error(`[council] Model ${result.model} failed:`, result.error);
+    } else {
+      console.log(`[council] Model ${result.model} succeeded, content length:`, result.content.length);
+    }
+    return {
+      model: result.model,
+      content: result.error ? `Error: ${result.error}` : result.content,
+      label: LABELS[index],
+    };
+  });
+
+  console.log("[council] Stage 1 complete, responses:", responses.length);
+  return responses;
 }
 
 // Create anonymized prompt for peer ranking
@@ -112,6 +124,8 @@ export async function stage2CollectRankings(
   models: string[],
   originalQuery: string
 ): Promise<Stage2Result> {
+  console.log("[council] Stage 2: Collecting rankings from models:", models);
+
   const rankingPrompt = createRankingPrompt(responses, originalQuery);
 
   const messages: ChatMessage[] = [
@@ -122,12 +136,17 @@ export async function stage2CollectRankings(
   ];
 
   const results = await callModelsParallel(models, messages);
+  console.log("[council] Stage 2: Got results from", results.length, "models");
 
-  const rankings: ModelRanking[] = results.map((result) => ({
-    model: result.model,
-    rankings: result.error ? [] : parseRankingFromText(result.content),
-    rawText: result.error ? `Error: ${result.error}` : result.content,
-  }));
+  const rankings: ModelRanking[] = results.map((result) => {
+    const parsed = result.error ? [] : parseRankingFromText(result.content);
+    console.log(`[council] Stage 2: ${result.model} rankings:`, parsed);
+    return {
+      model: result.model,
+      rankings: parsed,
+      rawText: result.error ? `Error: ${result.error}` : result.content,
+    };
+  });
 
   // Create label to model mapping
   const labelToModel: Record<string, string> = {};
@@ -235,6 +254,8 @@ export async function stage3Synthesize(
   originalQuery: string,
   chairmanModel: string
 ): Promise<string> {
+  console.log("[council] Stage 3: Synthesizing with chairman model:", chairmanModel);
+
   const synthesisPrompt = createSynthesisPrompt(responses, stage2Result, originalQuery);
 
   const messages: ChatMessage[] = [
@@ -244,7 +265,9 @@ export async function stage3Synthesize(
     },
   ];
 
-  return callModel(chairmanModel, messages);
+  const result = await callModel(chairmanModel, messages);
+  console.log("[council] Stage 3: Synthesis complete, length:", result.length);
+  return result;
 }
 
 // Generate a concise conversation title using the chairman model
@@ -308,21 +331,31 @@ export async function runFullCouncil(
   onStage2Complete?: (result: Stage2Result) => void,
   conversationHistory?: ChatMessage[]
 ): Promise<CouncilResponse> {
+  console.log("[council] runFullCouncil started");
+
   // Stage 1: Collect responses (with conversation history for context)
+  console.log("[council] Starting Stage 1...");
   const stage1Responses = await stage1CollectResponses(query, models, conversationHistory);
+  console.log("[council] Stage 1 done, calling callback...");
   onStage1Complete?.(stage1Responses);
+  console.log("[council] Stage 1 callback done");
 
   // Stage 2: Peer ranking (no history needed - evaluates current responses only)
+  console.log("[council] Starting Stage 2...");
   const stage2Result = await stage2CollectRankings(stage1Responses, models, query);
+  console.log("[council] Stage 2 done, calling callback...");
   onStage2Complete?.(stage2Result);
+  console.log("[council] Stage 2 callback done");
 
   // Stage 3: Synthesis
+  console.log("[council] Starting Stage 3...");
   const stage3Response = await stage3Synthesize(
     stage1Responses,
     stage2Result,
     query,
     chairmanModel
   );
+  console.log("[council] Stage 3 done");
 
   return {
     stage1: stage1Responses,
