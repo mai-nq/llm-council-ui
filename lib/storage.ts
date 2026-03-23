@@ -1,66 +1,76 @@
-// JSON File Storage for Conversations and Settings
+// Redis Storage for Conversations and Settings (Vercel KV / Upstash)
 
-import { promises as fs } from "fs";
-import path from "path";
+import { Redis } from "@upstash/redis";
 import type {
   Conversation,
   ConversationMetadata,
   Settings,
-  DEFAULT_SETTINGS,
 } from "./types";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const CONVERSATIONS_DIR = path.join(DATA_DIR, "conversations");
-const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
+// Initialize Redis client
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL!,
+  token: process.env.KV_REST_API_TOKEN!,
+});
 
-// Security: UUID validation to prevent path traversal attacks
+// Redis key prefixes
+const KEYS = {
+  settings: "llm-council:settings",
+  conversation: (id: string) => `llm-council:conversation:${id}`,
+  conversationsList: "llm-council:conversations-list",
+};
+
+// Security: UUID validation to prevent injection attacks
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function isValidUUID(id: string): boolean {
   return UUID_REGEX.test(id);
 }
 
-// Ensure directories exist
-async function ensureDirectories(): Promise<void> {
-  await fs.mkdir(CONVERSATIONS_DIR, { recursive: true });
-}
-
 // Settings
 
 export async function loadSettings(): Promise<Settings> {
   try {
-    await ensureDirectories();
-    const data = await fs.readFile(SETTINGS_FILE, "utf-8");
-    return JSON.parse(data) as Settings;
+    const settings = await redis.get<Settings>(KEYS.settings);
+    if (settings) {
+      return settings;
+    }
+    // Return default settings if not found
+    const { DEFAULT_SETTINGS } = await import("./types");
+    return DEFAULT_SETTINGS;
   } catch {
-    // Return default settings if file doesn't exist
     const { DEFAULT_SETTINGS } = await import("./types");
     return DEFAULT_SETTINGS;
   }
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
-  await ensureDirectories();
-  await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf-8");
+  await redis.set(KEYS.settings, settings);
 }
 
 // Conversations
 
 export async function listConversations(): Promise<ConversationMetadata[]> {
-  await ensureDirectories();
-
   try {
-    const files = await fs.readdir(CONVERSATIONS_DIR);
-    const jsonFiles = files.filter((f) => f.endsWith(".json"));
+    // Get list of conversation IDs
+    const conversationIds = await redis.smembers(KEYS.conversationsList);
 
+    if (!conversationIds || conversationIds.length === 0) {
+      return [];
+    }
+
+    // Fetch all conversations in parallel
     const conversations: ConversationMetadata[] = [];
 
-    for (const file of jsonFiles) {
-      try {
-        const filePath = path.join(CONVERSATIONS_DIR, file);
-        const data = await fs.readFile(filePath, "utf-8");
-        const conversation: Conversation = JSON.parse(data);
+    const pipeline = redis.pipeline();
+    for (const id of conversationIds) {
+      pipeline.get(KEYS.conversation(id));
+    }
 
+    const results = await pipeline.exec<(Conversation | null)[]>();
+
+    for (const conversation of results) {
+      if (conversation) {
         conversations.push({
           id: conversation.id,
           title: conversation.title,
@@ -68,9 +78,6 @@ export async function listConversations(): Promise<ConversationMetadata[]> {
           updatedAt: conversation.updatedAt,
           messageCount: conversation.messages.length,
         });
-      } catch {
-        // Skip invalid files
-        continue;
       }
     }
 
@@ -86,45 +93,43 @@ export async function listConversations(): Promise<ConversationMetadata[]> {
 }
 
 export async function loadConversation(id: string): Promise<Conversation | null> {
-  // Security: Validate UUID to prevent path traversal
+  // Security: Validate UUID to prevent injection
   if (!isValidUUID(id)) {
     return null;
   }
 
-  await ensureDirectories();
-
   try {
-    const filePath = path.join(CONVERSATIONS_DIR, `${id}.json`);
-    const data = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(data) as Conversation;
+    const conversation = await redis.get<Conversation>(KEYS.conversation(id));
+    return conversation;
   } catch {
     return null;
   }
 }
 
 export async function saveConversation(conversation: Conversation): Promise<void> {
-  // Security: Validate UUID to prevent path traversal
+  // Security: Validate UUID to prevent injection
   if (!isValidUUID(conversation.id)) {
     throw new Error("Invalid conversation ID");
   }
 
-  await ensureDirectories();
-
-  const filePath = path.join(CONVERSATIONS_DIR, `${conversation.id}.json`);
-  await fs.writeFile(filePath, JSON.stringify(conversation, null, 2), "utf-8");
+  // Save conversation and add to list atomically
+  const pipeline = redis.pipeline();
+  pipeline.set(KEYS.conversation(conversation.id), conversation);
+  pipeline.sadd(KEYS.conversationsList, conversation.id);
+  await pipeline.exec();
 }
 
 export async function deleteConversation(id: string): Promise<boolean> {
-  // Security: Validate UUID to prevent path traversal
+  // Security: Validate UUID to prevent injection
   if (!isValidUUID(id)) {
     return false;
   }
 
-  await ensureDirectories();
-
   try {
-    const filePath = path.join(CONVERSATIONS_DIR, `${id}.json`);
-    await fs.unlink(filePath);
+    const pipeline = redis.pipeline();
+    pipeline.del(KEYS.conversation(id));
+    pipeline.srem(KEYS.conversationsList, id);
+    await pipeline.exec();
     return true;
   } catch {
     return false;
