@@ -1,7 +1,8 @@
 'use client'
 
-import { Users, Settings, Github, History } from 'lucide-react'
+import { Users, Settings, Github, History, LogOut } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -16,6 +17,13 @@ interface HeaderProps {
 }
 
 export function Header({ onNewSession, onHistoryClick }: HeaderProps) {
+  const router = useRouter()
+
+  const handleSignOut = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    router.push('/login')
+    router.refresh()
+  }
   return (
     <header className="flex h-14 items-center justify-between border-b border-border px-4 lg:px-6">
       <div className="flex items-center gap-3">
@@ -72,6 +80,10 @@ export function Header({ onNewSession, onHistoryClick }: HeaderProps) {
                 <Github className="mr-2 h-4 w-4" />
                 View on GitHub
               </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive focus:text-destructive">
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
