@@ -7,11 +7,26 @@ import type {
   Settings,
 } from "./types";
 
-// Initialize Redis client
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL!,
-  token: process.env.KV_REST_API_TOKEN!,
-});
+// Initialize Redis client lazily to avoid errors when env vars are missing
+let _redis: Redis | null = null;
+
+function getRedis(): Redis {
+  if (!_redis) {
+    const url = process.env.KV_REST_API_URL;
+    const token = process.env.KV_REST_API_TOKEN;
+
+    console.log("[storage] Initializing Redis client...");
+    console.log("[storage] KV_REST_API_URL exists:", !!url);
+    console.log("[storage] KV_REST_API_TOKEN exists:", !!token);
+
+    if (!url || !token) {
+      throw new Error(`Redis credentials missing: URL=${!!url}, TOKEN=${!!token}`);
+    }
+
+    _redis = new Redis({ url, token });
+  }
+  return _redis;
+}
 
 // Redis key prefixes
 const KEYS = {
@@ -31,7 +46,7 @@ export function isValidUUID(id: string): boolean {
 
 export async function loadSettings(): Promise<Settings> {
   try {
-    const settings = await redis.get<Settings>(KEYS.settings);
+    const settings = await getRedis().get<Settings>(KEYS.settings);
     if (settings) {
       return settings;
     }
@@ -45,7 +60,7 @@ export async function loadSettings(): Promise<Settings> {
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
-  await redis.set(KEYS.settings, settings);
+  await getRedis().set(KEYS.settings, settings);
 }
 
 // Conversations
@@ -53,7 +68,7 @@ export async function saveSettings(settings: Settings): Promise<void> {
 export async function listConversations(): Promise<ConversationMetadata[]> {
   try {
     // Get list of conversation IDs
-    const conversationIds = await redis.smembers(KEYS.conversationsList);
+    const conversationIds = await getRedis().smembers(KEYS.conversationsList);
 
     if (!conversationIds || conversationIds.length === 0) {
       return [];
@@ -62,7 +77,7 @@ export async function listConversations(): Promise<ConversationMetadata[]> {
     // Fetch all conversations in parallel
     const conversations: ConversationMetadata[] = [];
 
-    const pipeline = redis.pipeline();
+    const pipeline = getRedis().pipeline();
     for (const id of conversationIds) {
       pipeline.get(KEYS.conversation(id));
     }
@@ -99,9 +114,10 @@ export async function loadConversation(id: string): Promise<Conversation | null>
   }
 
   try {
-    const conversation = await redis.get<Conversation>(KEYS.conversation(id));
+    const conversation = await getRedis().get<Conversation>(KEYS.conversation(id));
     return conversation;
-  } catch {
+  } catch (error) {
+    console.error("[storage] loadConversation error:", error);
     return null;
   }
 }
@@ -113,7 +129,7 @@ export async function saveConversation(conversation: Conversation): Promise<void
   }
 
   // Save conversation and add to list atomically
-  const pipeline = redis.pipeline();
+  const pipeline = getRedis().pipeline();
   pipeline.set(KEYS.conversation(conversation.id), conversation);
   pipeline.sadd(KEYS.conversationsList, conversation.id);
   await pipeline.exec();
@@ -126,12 +142,13 @@ export async function deleteConversation(id: string): Promise<boolean> {
   }
 
   try {
-    const pipeline = redis.pipeline();
+    const pipeline = getRedis().pipeline();
     pipeline.del(KEYS.conversation(id));
     pipeline.srem(KEYS.conversationsList, id);
     await pipeline.exec();
     return true;
-  } catch {
+  } catch (error) {
+    console.error("[storage] deleteConversation error:", error);
     return false;
   }
 }

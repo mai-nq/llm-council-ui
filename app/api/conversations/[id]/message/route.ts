@@ -35,11 +35,14 @@ interface RouteParams {
 }
 
 export async function POST(request: Request, { params }: RouteParams) {
+  console.log("[message/route] POST request started");
+
   // Security: Rate limiting for expensive LLM endpoint
   const clientIP = getClientIP(request);
   const rateLimitResult = checkRateLimit(`message:${clientIP}`, RATE_LIMITS.llm);
 
   if (!rateLimitResult.allowed) {
+    console.log("[message/route] Rate limit exceeded for:", clientIP);
     return NextResponse.json(
       { error: "Too many requests. Please try again later." },
       {
@@ -52,12 +55,15 @@ export async function POST(request: Request, { params }: RouteParams) {
   }
 
   const { id } = await params;
+  console.log("[message/route] Conversation ID:", id);
 
   try {
     const body = await request.json();
     const { content } = body;
+    console.log("[message/route] Message content received, length:", content?.length);
 
     if (!content || typeof content !== "string") {
+      console.log("[message/route] Invalid content");
       return NextResponse.json(
         { error: "Message content is required" },
         { status: 400 }
@@ -65,19 +71,30 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     // Load conversation
+    console.log("[message/route] Loading conversation...");
     const conversation = await loadConversation(id);
     if (!conversation) {
+      console.log("[message/route] Conversation not found:", id);
       return NextResponse.json(
         { error: "Conversation not found" },
         { status: 404 }
       );
     }
+    console.log("[message/route] Conversation loaded successfully");
 
     // Load settings
+    console.log("[message/route] Loading settings...");
     const settings = await loadSettings();
+    console.log("[message/route] Settings loaded successfully");
 
     // Check API key
+    console.log("[message/route] Checking OPENROUTER_API_KEY...");
+    console.log("[message/route] OPENROUTER_API_KEY exists:", !!process.env.OPENROUTER_API_KEY);
+    console.log("[message/route] KV_REST_API_URL exists:", !!process.env.KV_REST_API_URL);
+    console.log("[message/route] KV_REST_API_TOKEN exists:", !!process.env.KV_REST_API_TOKEN);
+
     if (!process.env.OPENROUTER_API_KEY) {
+      console.log("[message/route] OPENROUTER_API_KEY is missing!");
       return NextResponse.json(
         { error: "OPENROUTER_API_KEY is not configured" },
         { status: 500 }
@@ -183,9 +200,10 @@ export async function POST(request: Request, { params }: RouteParams) {
       },
     });
   } catch (error) {
-    console.error("Failed to process message:", error);
+    console.error("[message/route] Failed to process message:", error);
+    console.error("[message/route] Error stack:", error instanceof Error ? error.stack : "No stack");
     return NextResponse.json(
-      { error: "Failed to process message" },
+      { error: "Failed to process message", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     );
   }
